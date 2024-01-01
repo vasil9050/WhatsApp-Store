@@ -1,7 +1,9 @@
 'use strict';
 const router = require('express').Router();
+const fetch = require('node-fetch');
 
 const WhatsappCloudAPI = require('whatsappcloudapi_wrapper');
+// const WhatsappAPI = require('whatsapp-business-api');
 const Whatsapp = new WhatsappCloudAPI({
   accessToken: process.env.Meta_WA_accessToken,
   senderPhoneNumberId: process.env.Meta_WA_SenderPhoneNumberId,
@@ -9,11 +11,20 @@ const Whatsapp = new WhatsappCloudAPI({
   graphAPIVersion: 'v14.0',
 });
 
+const botId = process.env.Meta_WA_SenderPhoneNumberId;
+const bearerToken = process.env.Meta_WA_accessToken;
+
+// const wp = new WhatsappAPI({
+//   accountPhoneNumberId: process.env.Meta_WA_SenderPhoneNumberId, // required
+//   accessToken: process.env.Meta_WA_accessToken, // required
+// });
+
 const EcommerceStore = require('./../utils/ecommerce_store.js');
 let Store = new EcommerceStore();
 let count = 0;
 let optLst = [];
 let flag = 0;
+let pdf = 0;
 const CustomerSession = new Map();
 
 router.get('/meta_wa_callbackurl', (req, res) => {
@@ -39,12 +50,101 @@ router.post('/meta_wa_callbackurl', async (req, res) => {
   try {
     let data = Whatsapp.parseMessage(req.body);
 
+    const callButtonMessage = {
+      type: 'template',
+      template: {
+        name: 'call_action',
+        language: {
+          code: 'en_US',
+          policy: 'deterministic',
+        },
+        components: [
+          {
+            type: 'button',
+            sub_type: 'quick_reply',
+            index: 1,
+          },
+        ],
+      },
+    };
+
     if (data?.isMessage) {
       let incomingMessage = data.message;
       let recipientPhone = incomingMessage.from.phone; // extract the phone number of sender
       let recipientName = incomingMessage.from.name;
       let typeOfMsg = incomingMessage.type; // extract the type of message (some are text, others are images, others are responses to buttons etc...)
       let message_id = incomingMessage.message_id; // extract the message id
+
+      let phoneNbr = incomingMessage.from.phone;
+      var url = ' https://graph.facebook.com/v17.0/' + botId + '/messages';
+
+      let optionsCallButton = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: [phoneNbr],
+        ...callButtonMessage,
+      //   text: {
+      //     body: 'Greeting From Vizz',
+      // },
+      };
+
+    function optionsButtonPdfSend(recipientPhone, caption, URL) {
+      let optionsCallButtonPdfSend = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: [recipientPhone],
+        type: 'document',
+        document: {
+            caption: caption || '',
+            link: URL,
+            filename: caption || 'document'
+        },
+    };
+
+    return optionsCallButtonPdfSend;
+    }
+
+      async function sendCallButton() {
+        const postReq = {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + bearerToken,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(optionsCallButton),
+          json: true,
+        };
+
+        fetch(url, postReq)
+          .then((data) => {
+            return data.json();
+          })
+          .then((res) => {
+            console.log(res);
+          })
+          .catch((error) => console.log(error));
+      }
+
+      async function sendPDF(recipientPhone, caption, URL) {
+        const postReq = {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + bearerToken,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(optionsButtonPdfSend(recipientPhone, caption, URL)),
+          json: true,
+        };
+
+        fetch(url, postReq)
+          .then((data) => {
+            return data.json();
+          })
+          .then((res) => {
+            console.log(res);
+          })
+          .catch((error) => console.log(error));
+      }
 
       if (typeOfMsg === 'radio_button_message') {
         count++;
@@ -72,6 +172,10 @@ router.post('/meta_wa_callbackurl', async (req, res) => {
               title: 'Speak to a human',
               id: 'speak_to_human',
             },
+            {
+              title: 'Print my invoice',
+              id: 'print_invoice',
+            },
           ],
         });
       }
@@ -85,32 +189,34 @@ router.post('/meta_wa_callbackurl', async (req, res) => {
             message: `Arguably, chatbots are faster than humans.\nCall my human with the below details:`,
           });
 
-          await Whatsapp.sendContact({
-            recipientPhone: recipientPhone,
-            contact_profile: {
-              addresses: [
-                {
-                  city: 'Nairobi',
-                  country: 'Kenya',
-                },
-              ],
-              name: {
-                first_name: 'Daggie',
-                last_name: 'Blanqx',
-              },
-              org: {
-                company: 'Mom-N-Pop Shop',
-              },
-              phones: [
-                {
-                  phone: '+1 (555) 025-3483',
-                },
-                {
-                  phone: '+254712345678',
-                },
-              ],
-            },
-          });
+          sendCallButton();
+
+          // await Whatsapp.sendContact({
+          //   recipientPhone: recipientPhone,
+          //   contact_profile: {
+          //     addresses: [
+          //       {
+          //         city: 'Nairobi',
+          //         country: 'Kenya',
+          //       },
+          //     ],
+          //     name: {
+          //       first_name: 'Daggie',
+          //       last_name: 'Blanqx',
+          //     },
+          //     org: {
+          //       company: 'Mom-N-Pop Shop',
+          //     },
+          //     phones: [
+          //       {
+          //         phone: '+1 (555) 025-3483',
+          //       },
+          //       {
+          //         phone: '+254712345678',
+          //       },
+          //     ],
+          //   },
+          // });
         }
 
         if (button_id === 'see_categories') {
@@ -144,35 +250,39 @@ router.post('/meta_wa_callbackurl', async (req, res) => {
 
             console.log('>>>>productInvoice', productInvoice);
 
-            Store.generatePDFInvoice({
-              order_details: invoiceText + productInvoice,
-              file_path: `./invoice_${recipientName}.pdf`,
-            });
 
-            // Send the PDF invoice
+            //* PDF online link
+            // await Whatsapp.sendDocument({
+            //   recipientPhone: recipientPhone,
+            //   caption: `PDF invoice #${recipientName}`,
+            //   url: 'https://www.adobe.com/support/products/enterprise/knowledgecenter/media/c4611_sample_explain.pdf',
+            // });
 
-            // Send Created PDF
-            await Whatsapp.sendDocument({
-              recipientPhone: recipientPhone,
-              caption: `PDF invoice #${recipientName}`,
-              file_path: `./invoice_${recipientName}.pdf`,
-            });
+            let caption = `PDF invoice #${recipientName}`;
+            let url = 'https://www.adobe.com/support/products/enterprise/knowledgecenter/media/c4611_sample_explain.pdf';
 
-            // Send Stored PDF
-            await Whatsapp.sendDocument({
-              recipientPhone: recipientPhone,
-              caption: `PDF invoice #${recipientName}`,
-              file_path: './public/Profile.pdf',
-            });
+            await sendPDF(recipientPhone, caption, url)
 
-            // Send the location of our pickup station to the customer, so they can come and pick up their order
+            //* PDF generate in local
+            // Store.generatePDFInvoice({
+            //   order_details: invoiceText + productInvoice,
+            //   file_path: `./invoice_${recipientName}${++pdf}.pdf`,
+            // });
+
+            //* Send Stored PDF
+            // await Whatsapp.sendDocument({
+            //   recipientPhone: recipientPhone,
+            //   caption: `PDF invoice #${recipientName}`,
+            //   file_path: './public/Profile.pdf',
+            // });
+
+            // * Send the location of our pickup station to the customer, so they can come and pick up their order
+
             // let warehouse = Store.generateRandomGeoLocation();
-
             // await Whatsapp.sendText({
             //   recipientPhone: recipientPhone,
             //   message: `Your order has been fulfilled. Come and pick it up, as you pay, here:`,
             // });
-
             //   await Whatsapp.sendLocation({
             //     recipientPhone,
             //     latitude: warehouse.latitude,
