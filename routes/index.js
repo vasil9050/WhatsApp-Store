@@ -151,15 +151,17 @@ router.post('/meta_wa_callbackurl', async (req, res) => {
         console.log('>>>', count);
         if (count === 1) incomingMessage.option = count;
         if (count === 2) incomingMessage.option = count;
-        if (count === 2) count = 0;
+        if (count === 3) incomingMessage.option = count;
+        if (count === 3) count = 0;
 
         if (count <= 2) {
           if (incomingMessage.option === 1) optLst[0] = incomingMessage.list_reply;
           if (incomingMessage.option === 2) optLst[1] = incomingMessage.list_reply;
+          if (incomingMessage.option === 3) optLst[2] = incomingMessage.list_reply;
         }
       }
 
-      if (typeOfMsg === 'text_message') {
+      if (typeOfMsg === 'text_message' || (typeOfMsg === 'simple_button_message' && incomingMessage.button_reply.id === 'go_back_main_menu')) {
         await Whatsapp.sendSimpleButtons({
           message: `Hey ${recipientName}, \nYou are speaking to a chatbot.\nWhat do you want to do next?`,
           recipientPhone: recipientPhone,
@@ -312,28 +314,35 @@ router.post('/meta_wa_callbackurl', async (req, res) => {
 
           let listOfSections1 = [
             {
-              title: `🏆 Top 3: ${selectedCategory}`.substring(0, 24),
-              rows: listOfProducts.data
-                .map((product) => {
-                  let id = `product_${product.id}`.substring(0, 256);
-                  let title = product.title.substring(0, 21);
-                  let description = `${product.price}\n${product.description}`.substring(0, 68);
-
-                  return {
-                    id,
-                    title: `${title}...`,
-                    description: `$${description}...`,
-                  };
-                })
-                .slice(0, 10),
-            },
+              title: 'Max Capacity',
+              rows: [
+                {
+                  id: 1,
+                  title: 1,
+                  description: 'Load value 1'
+                },
+                {
+                  id: 2,
+                  title: 2,
+                  description:'Load value 2',
+                }
+              ]
+            }
           ];
+          
+          await Whatsapp.sendText({
+            recipientPhone: recipientPhone,
+            message: 'Next you will be required to select Max Load, Max Speed ad Max Watt one by one as the option list pops up'
+          });
+
+          await new Promise((resolve) => setTimeout(resolve, 3000));
 
           await Whatsapp.sendRadioButtons({
             recipientPhone: recipientPhone,
-            headerText: `#Offers: ${selectedCategory}`,
+            headerText: 'Select the Max passenger Capacity :',
+            //headerText: `#Offers: ${selectedCategory}`,
             bodyText: `1> Select any option:`,
-            footerText: 'XYZ',
+            footerText: 'Max Passenger Capacity',
             listOfSections: listOfSections1,
           });
         }
@@ -343,36 +352,64 @@ router.post('/meta_wa_callbackurl', async (req, res) => {
         let listOfProducts = await Store.getProductsInCategory('jewelery');
         let listOfSections2 = [
           {
-            title: `🏆 Top 3: Product`.substring(0, 24),
-            rows: listOfProducts.data
-              .map((product) => {
-                let id = `product_${product.id}`.substring(0, 256);
-                let title = product.title.substring(0, 21);
-                let description = `${product.price}\n${product.description}`.substring(0, 68);
+            title: 'MAx Speed',
+            rows: [
+            {
+              id: 1,
+              title: 1,
+              description: 'Speed value 1'
+            },
+            {
+              id: 2,
+              title: 2,
+              description:'Speed value 2',
+            }
+            ]
+          }
+        ]
 
-                return {
-                  id,
-                  title: `${title}...`,
-                  description: `$${description}...`,
-                };
-              })
-              .slice(0, 10),
+        await Whatsapp.sendRadioButtons({
+          recipientPhone: recipientPhone,
+          headerText: 'Select the Max Speed :',
+          bodyText: `2> Select any option:`,
+          footerText: 'Max Speed m/s',
+          listOfSections: listOfSections2,
+        });
+      }
+
+      if (optLst.length === 2 && typeOfMsg === 'radio_button_message') {
+        let listOfProducts = await Store.getProductsInCategory('jewelery');
+        let listOfSections2 = [
+          {
+            title: 'MAx Wattage',
+            rows: [
+              {
+                id: 1,
+                title: 1,
+                description: 'Watt value 1'
+              },
+              {
+                id: 2,
+                title: 2,
+                description:'Watt value 2',
+              }
+            ]
           },
         ];
 
         await Whatsapp.sendRadioButtons({
           recipientPhone: recipientPhone,
-          headerText: `#Offers:`,
-          bodyText: `2> Select any option:`,
-          footerText: 'XYZ',
+          headerText: 'Select the Max Watt :',
+          bodyText: `3> Select any option:`,
+          footerText: 'Max Watt',
           listOfSections: listOfSections2,
         });
       }
 
       console.log('>>>', optLst);
 
-      if (optLst.length === 2) {
-        console.log('>>>', optLst);
+      if (optLst.length === 3) {
+        console.log('>>> IN', optLst);
 
         let selectionId = incomingMessage.list_reply.id; // the customer clicked and submitted a radio button
 
@@ -383,23 +420,25 @@ router.post('/meta_wa_callbackurl', async (req, res) => {
           let product = await Store.getProductById(product_id);
           const { price, title, description, category, image: imageUrl, rating } = product.data;
 
-          await Promise.all(
-            optLst.map(async (i) => {
-              let product_1 = await Store.getProductById(i.id.split('_')[1]);
-              await productImg.push(product_1?.data?.image);
-            })
-          );
+          // await Promise.all(
+          //   optLst.map(async (i) => {
+          //     let product_1 = await Store.getProductById(i.id.split('_')[1]);
+          //     await productImg.push(product_1?.data?.image);
+          //   })
+          // );
 
-          console.log(productImg);
+          // console.log(productImg);
 
-          let emojiRating = (rvalue) => {
-            rvalue = Math.floor(rvalue || 0); // generate as many star emojis as whole number ratings
-            let output = [];
-            for (var i = 0; i < rvalue; i++) output.push('⭐');
-            return output.length ? output.join('') : 'N/A';
-          };
+          // let emojiRating = (rvalue) => {
+          //   rvalue = Math.floor(rvalue || 0); // generate as many star emojis as whole number ratings
+          //   let output = [];
+          //   for (var i = 0; i < rvalue; i++) output.push('⭐');
+          //   return output.length ? output.join('') : 'N/A';
+          // };
 
-          let text = `Your Selection are \n\n >> ${optLst[0]?.title} \n >>> ${optLst[1]?.title}`;
+          let text = `Your Selection are \n\n >> ${optLst[0]?.title} \n >>> ${optLst[1]?.title} \n >>> ${optLst[2]?.title}`;
+
+          console.log('>>> IN', text);
 
           // let text = `_Title_: *${title.trim()}*\n\n\n`;
           // text += `_Description_: ${description.trim()}\n\n\n`;
@@ -408,19 +447,24 @@ router.post('/meta_wa_callbackurl', async (req, res) => {
           // text += `${rating?.count || 0} shoppers liked this product.\n`;
           // text += `_Rated_: ${emojiRating(rating?.rate)}\n`;
 
-          await Whatsapp.sendImage({
-            recipientPhone,
-            url: productImg[0],
-            caption: text,
-          });
+          // await Whatsapp.sendImage({
+            // recipientPhone,
+            // url: productImg[0],
+          //   caption: text,
+          // });
+
+          await Whatsapp.sendText({
+              recipientPhone: recipientPhone,
+              message: text
+            });
 
           // Add a small delay (optional, but it helps group the messages)
           await new Promise((resolve) => setTimeout(resolve, 1000));
 
-          await Whatsapp.sendImage({
-            recipientPhone,
-            url: productImg[1],
-          });
+          // await Whatsapp.sendImage({
+          //   recipientPhone,
+          //   url: productImg[1],
+          // });
 
           // Add a small delay (optional, but it helps group the messages)
           await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -444,7 +488,23 @@ router.post('/meta_wa_callbackurl', async (req, res) => {
             ],
           });
         }
-        // optLst = [];
+        let text = `Your Selection are \n\n >> ${optLst[0]?.description} \n >>> ${optLst[1]?.description} \n >>> ${optLst[2]?.description}`;
+        await Whatsapp.sendText({
+          recipientPhone: recipientPhone,
+          message: text
+        });
+        await Whatsapp.sendSimpleButtons({
+          message: `Go back to main menu`,
+          recipientPhone: recipientPhone,
+          listOfButtons: [
+            {
+              title: 'Main manu',
+              id: `go_back_main_menu`,
+            },
+          ],
+        });
+
+        optLst = [];
       }
 
       // message read blue tick
